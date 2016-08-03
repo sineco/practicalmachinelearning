@@ -9,14 +9,62 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Overview
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+The goal of this project is predict the quality in which some exercises were preformed. The data for this project come from <http://groupware.les.inf.puc-rio.br/har>, and it contains data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform the exercises in 5 different ways, which are described below:
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+* (Class A) exactly according to the specification 
+* (Class B) throwing the elbows to the front 
+* (Class C) lifting the dumbbell only halfway  
+* (Class D) lowering the dumbbell only halfway  
+* (Class E) throwing the hips to the front 
 
-```{r cars}
-summary(cars)
+We want to predict the classes (A, B, C, D, or E) of **20** different test cases. 
+
+## Data loading
+
+First, we download and load the data that is available at 
+
+training data:
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+
+test data:
+<https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+```{r loadData, echo=TRUE}
+if(!dir.exists("data")){
+  dir.create("data")
+}
+
+url_train_file <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+url_test_file <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+download.file(url_train_file, destfile = "./data/pml-training.csv", method = "curl")
+download.file(url_test_file, destfile = "./data/pml-testing.csv", method = "curl")
+
+dateDownloaded <- date()
+list.files()
+
+training_data <- read.csv("./data/pml-training.csv", header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
+testing_data <- read.csv("./data/pml-testing.csv", header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
+
+```
+## Data Cleaning
+
+Before any further analysys it is important to make the data tidy by gettinng ride of the covariates (features) that are missing a lot of data and changing data types that might have been imported erroniously, for example the columns `cvtd_timestamp`, wich has a date type was imported as a Factor, besides that, `kurtosis_yaw_belt` and `skewness_yaw_belt` which are supposed to numeric columns were imported as logic. Although these columns were  wrongly imported in they are supposed to be fixed, in this specific case they can actually be removed all together since they have a lot of NA's. These variables only has actual values when `new_window == 'yes'`, which make then very sparse. Therefore all the `kurtosis_`, `skewness_`, `max_`, `min_`, `amplitude_`, `var_total_accel_`, `avg_`, and `stddev_` where eliminated from the original data frame by using the `cleanData` function.
+
+```{r str}
+str(training_data, list.len = 17)
+```
+
+Besides, the listed features, some other features such as `X`, `raw_timestamp_part_1`, `raw_timestamp_part_2`, `cvtd_timestamp`, `new_window` do not contribute to the prediction and were also removed by the `cleanData` function.
+
+```{r cleanData, echo=TRUE}
+cleanData <- function(data){
+  data <- subset(data, select=-c(X, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window))
+  data <- data[,colSums(is.na(data)) < 1] # Remove columns that mainly contain NA's
+  return(data)
+}
 ```
 
 ## Including Plots

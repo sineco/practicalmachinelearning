@@ -122,18 +122,72 @@ $(document).ready(function () {
 </div>
 
 
-<div id="r-markdown" class="section level2">
-<h2>R Markdown</h2>
-<p>This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <a href="http://rmarkdown.rstudio.com" class="uri">http://rmarkdown.rstudio.com</a>.</p>
-<p>When you click the <strong>Knit</strong> button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:</p>
-<pre class="r"><code>summary(cars)</code></pre>
-<pre><code>##      speed           dist       
-##  Min.   : 4.0   Min.   :  2.00  
-##  1st Qu.:12.0   1st Qu.: 26.00  
-##  Median :15.0   Median : 36.00  
-##  Mean   :15.4   Mean   : 42.98  
-##  3rd Qu.:19.0   3rd Qu.: 56.00  
-##  Max.   :25.0   Max.   :120.00</code></pre>
+<div id="overview" class="section level2">
+<h2>Overview</h2>
+<p>The goal of this project is predict the quality in which some exercises were preformed. The data for this project come from <a href="http://groupware.les.inf.puc-rio.br/har" class="uri">http://groupware.les.inf.puc-rio.br/har</a>, and it contains data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform the exercises in 5 different ways, which are described below:</p>
+<ul>
+<li>(Class A) exactly according to the specification</li>
+<li>(Class B) throwing the elbows to the front</li>
+<li>(Class C) lifting the dumbbell only halfway<br />
+</li>
+<li>(Class D) lowering the dumbbell only halfway<br />
+</li>
+<li>(Class E) throwing the hips to the front</li>
+</ul>
+<p>We want to predict the classes (A, B, C, D, or E) of <strong>20</strong> different test cases.</p>
+</div>
+<div id="data-loading" class="section level2">
+<h2>Data loading</h2>
+<p>First, we download and load the data that is available at</p>
+<p>training data: <a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv" class="uri">https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv</a></p>
+<p>test data: <a href="https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv" class="uri">https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv</a></p>
+<pre class="r"><code>if(!dir.exists(&quot;data&quot;)){
+  dir.create(&quot;data&quot;)
+}
+
+url_train_file &lt;- &quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv&quot;
+url_test_file &lt;- &quot;https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv&quot;
+
+download.file(url_train_file, destfile = &quot;./data/pml-training.csv&quot;, method = &quot;curl&quot;)
+download.file(url_test_file, destfile = &quot;./data/pml-testing.csv&quot;, method = &quot;curl&quot;)
+
+dateDownloaded &lt;- date()
+list.files()</code></pre>
+<pre><code>## [1] &quot;data&quot;                           &quot;index.html&quot;                    
+## [3] &quot;index.Rmd&quot;                      &quot;LICENSE&quot;                       
+## [5] &quot;practicalmachinelearning.Rproj&quot; &quot;README.md&quot;</code></pre>
+<pre class="r"><code>training_data &lt;- read.csv(&quot;./data/pml-training.csv&quot;, header = TRUE, na.strings = c(&quot;&quot;, &quot;NA&quot;, &quot;#DIV/0!&quot;))
+testing_data &lt;- read.csv(&quot;./data/pml-testing.csv&quot;, header = TRUE, na.strings = c(&quot;&quot;, &quot;NA&quot;, &quot;#DIV/0!&quot;))</code></pre>
+</div>
+<div id="data-cleaning" class="section level2">
+<h2>Data Cleaning</h2>
+<p>Before any further analysys it is important to make the data tidy by gettinng ride of the covariates (features) that are missing a lot of data and changing data types that might have been imported erroniously, for example the columns <code>cvtd_timestamp</code>, wich has a date type was imported as a Factor, besides that, <code>kurtosis_yaw_belt</code> and <code>skewness_yaw_belt</code> which are supposed to numeric columns were imported as logic. Although these columns were wrongly imported in they are supposed to be fixed, in this specific case they can actually be removed all together since they have a lot of NA’s. These variables only has actual values when <code>new_window == 'yes'</code>, which make then very sparse. Therefore all the <code>kurtosis_</code>, <code>skewness_</code>, <code>max_</code>, <code>min_</code>, <code>amplitude_</code>, <code>var_total_accel_</code>, <code>avg_</code>, and <code>stddev_</code> where eliminated from the original data frame by using the <code>cleanData</code> function.</p>
+<pre class="r"><code>str(training_data, list.len = 17)</code></pre>
+<pre><code>## 'data.frame':    19622 obs. of  160 variables:
+##  $ X                       : int  1 2 3 4 5 6 7 8 9 10 ...
+##  $ user_name               : Factor w/ 6 levels &quot;adelmo&quot;,&quot;carlitos&quot;,..: 2 2 2 2 2 2 2 2 2 2 ...
+##  $ raw_timestamp_part_1    : int  1323084231 1323084231 1323084231 1323084232 1323084232 1323084232 1323084232 1323084232 1323084232 1323084232 ...
+##  $ raw_timestamp_part_2    : int  788290 808298 820366 120339 196328 304277 368296 440390 484323 484434 ...
+##  $ cvtd_timestamp          : Factor w/ 20 levels &quot;02/12/2011 13:32&quot;,..: 9 9 9 9 9 9 9 9 9 9 ...
+##  $ new_window              : Factor w/ 2 levels &quot;no&quot;,&quot;yes&quot;: 1 1 1 1 1 1 1 1 1 1 ...
+##  $ num_window              : int  11 11 11 12 12 12 12 12 12 12 ...
+##  $ roll_belt               : num  1.41 1.41 1.42 1.48 1.48 1.45 1.42 1.42 1.43 1.45 ...
+##  $ pitch_belt              : num  8.07 8.07 8.07 8.05 8.07 8.06 8.09 8.13 8.16 8.17 ...
+##  $ yaw_belt                : num  -94.4 -94.4 -94.4 -94.4 -94.4 -94.4 -94.4 -94.4 -94.4 -94.4 ...
+##  $ total_accel_belt        : int  3 3 3 3 3 3 3 3 3 3 ...
+##  $ kurtosis_roll_belt      : num  NA NA NA NA NA NA NA NA NA NA ...
+##  $ kurtosis_picth_belt     : num  NA NA NA NA NA NA NA NA NA NA ...
+##  $ kurtosis_yaw_belt       : logi  NA NA NA NA NA NA ...
+##  $ skewness_roll_belt      : num  NA NA NA NA NA NA NA NA NA NA ...
+##  $ skewness_roll_belt.1    : num  NA NA NA NA NA NA NA NA NA NA ...
+##  $ skewness_yaw_belt       : logi  NA NA NA NA NA NA ...
+##   [list output truncated]</code></pre>
+<p>Besides, the listed features, some other features such as <code>X</code>, <code>raw_timestamp_part_1</code>, <code>raw_timestamp_part_2</code>, <code>cvtd_timestamp</code>, <code>new_window</code> do not contribute to the prediction and were also removed by the <code>cleanData</code> function.</p>
+<pre class="r"><code>cleanData &lt;- function(data){
+  data &lt;- subset(data, select=-c(X, raw_timestamp_part_1, raw_timestamp_part_2, cvtd_timestamp, new_window))
+  data &lt;- data[,colSums(is.na(data)) &lt; 1] # Remove columns that mainly contain NA's
+  return(data)
+}</code></pre>
 </div>
 <div id="including-plots" class="section level2">
 <h2>Including Plots</h2>
