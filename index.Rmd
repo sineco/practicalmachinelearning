@@ -11,7 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 
 ## Overview
 
-The goal of this project is predict the quality in which some exercises were preformed. The data for this project come from <http://groupware.les.inf.puc-rio.br/har>, and it contains data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform the exercises in 5 different ways, which are described below:
+The goal of this project is to predict the quality in which some exercises were preformed. The data for this project come from <http://groupware.les.inf.puc-rio.br/har>, and contain information from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform the exercises in 5 different ways, which are described below:
 
 * (Class A) exactly according to the specification 
 * (Class B) throwing the elbows to the front 
@@ -43,7 +43,6 @@ download.file(url_train_file, destfile = "./data/pml-training.csv", method = "cu
 download.file(url_test_file, destfile = "./data/pml-testing.csv", method = "curl")
 
 dateDownloaded <- date()
-list.files()
 
 training_data <- read.csv("./data/pml-training.csv", header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
 testing_data <- read.csv("./data/pml-testing.csv", header = TRUE, na.strings = c("", "NA", "#DIV/0!"))
@@ -51,7 +50,7 @@ testing_data <- read.csv("./data/pml-testing.csv", header = TRUE, na.strings = c
 ```
 ## Data Cleaning
 
-Before any further analysys it is important to make the data tidy by gettinng ride of the covariates (features) that are missing a lot of data and changing data types that might have been imported erroniously, for example the columns `cvtd_timestamp`, wich has a date type was imported as a Factor, besides that, `kurtosis_yaw_belt` and `skewness_yaw_belt` which are supposed to numeric columns were imported as logic. Although these columns were  wrongly imported in they are supposed to be fixed, in this specific case they can actually be removed all together since they have a lot of NA's. These variables only has actual values when `new_window == 'yes'`, which make then very sparse. Therefore all the `kurtosis_`, `skewness_`, `max_`, `min_`, `amplitude_`, `var_total_accel_`, `avg_`, and `stddev_` where eliminated from the original data frame by using the `cleanData` function.
+Before any further analysys, it is important to make the data tidy by gettinng ride of the covariates (features) that are missing a lot of data and changing data types that might have been imported erroniously, for example the columns `cvtd_timestamp`, wich has a date type was imported as a Factor, besides that, `kurtosis_yaw_belt` and `skewness_yaw_belt`, which are supposed to be numeric columns were imported as logical. Although these columns were  wrongly imported and they are supposed to be fixed, in this specific case they can actually be removed all together since they have a lot of NA's. These variables only has actual values when `new_window == 'yes'`, which make then very sparse. Therefore all the `kurtosis_`, `skewness_`, `max_`, `min_`, `amplitude_`, `var_total_accel_`, `avg_`, and `stddev_` where eliminated from the original data frame by using the `cleanData` function described below.
 
 ```{r str}
 str(training_data, list.len = 17)
@@ -65,14 +64,91 @@ cleanData <- function(data){
   data <- data[,colSums(is.na(data)) < 1] # Remove columns that mainly contain NA's
   return(data)
 }
+
+training_data <- cleanData(training_data)
+testing_data <- cleanData(testing_data)
+
 ```
 
-## Including Plots
+## Partition Data
 
-You can also embed plots, for example:
+Before exploring and training a model, it is necessary to partiotion the data into two subsets, one that will be used to train the model and a second portion that will be used to validate our trained mode, or get the out-of-sample error of the model. We propose a 70/30 partition, where 70% of the date is used for training and 30% of the date is used for testing.
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r partitionData, echo=TRUE, message= FALSE}
+library(caret)
+set.seed(123)
+inTrain <- createDataPartition(y = training_data$classe, p = 0.70, list = FALSE)
+
+training <- training_data[inTrain,]
+testing <- training_data[-inTrain,]
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+## Exploratory Analysis
+
+If we analyse the densities of several features 3 by 3 (e.g. `magnet_dumbbell_x`, `magnet_dumbbell_y`, `magnet_dumbbell_z`) it is not obvious that a linear classifier can seperate the 5 classes correctly. See density plot below.
+
+
+```{r densityPlot, echo=FALSE}
+library(AppliedPredictiveModeling)
+transparentTheme(trans = .9)
+featurePlot(x = training[, 39:41],
+                  y = training$classe,
+                  plot = "density",
+                  ## Pass in options to xyplot() to 
+                  ## make it prettier
+                  scales = list(x = list(relation="free"),
+                                y = list(relation="free")),
+                  adjust = 1.5,
+                  pch = "|",
+                  layout = c(3, 1),
+                  auto.key = list(columns = 5))
+```
+
+Therefore, a classifier that can perform better in nonlinear settings would be a better choice. 
+
+## Training Predictive Models
+
+We started by training a classification tree because they are easy to interpret, has good performance in nonlinear settings, they use interactions between variables, and they don't need a lot of data transformation. We used `rpart` method and a 10-fold crossvalidation with different complexity parameters to avoid overfiting.
+
+```{r tree10fold, echo=TRUE, message=FALSE}
+grid <-  expand.grid(cp=c(1:10)*0.01)
+fit_rpart_10k <- train(classe ~ ., data=training, method="rpart", tuneGrid=grid, trControl=trainControl(method="cv", number=10))
+plot(fit_rpart_10k)
+```
+```{r plotTree, echo=TRUE, message=FALSE, fig.width=10, fig.height=10}
+plot(fit_rpart_10k$finalModel, uniform=TRUE, 
+      main="Classification Tree")
+text(fit_rpart_10k$finalModel, use.n=TRUE, all=TRUE, cex=.5)
+```
+```{r predictionTree, echo=TRUE, message=FALSE}
+# Predict in the test set (out-of-sample-error)
+rpart10k_pred <- predict(fit_rpart_10k, newdata = testing)
+confusionMatrix(rpart10k_pred, testing$classe)$table
+confusionMatrix(rpart10k_pred, testing$classe)$overall["Accuracy"]
+```
+
+
+When runing the predictive model on the test set, we get an accuracy of `r confusionMatrix(rpart10k_pred, testing$classe)$overall["Accuracy"]`, which is a good accuracy, but we want to see if we can get better results.
+
+Next, we trained a random forest predictor, which is  usually  one  of  the  two  top  performing  algorithms in competitions. 
+
+```{r randomForest, echo=TRUE, cache=TRUE, message=FALSE}
+library(randomForest)
+fit_rf <- randomForest(classe ~. , data=training, importance=T)
+
+rf_pred <- predict(fit_rf, newdata = testing)
+cm <- confusionMatrix(rf_pred, testing$classe)
+confusionMatrix(rf_pred, testing$classe)
+```
+
+The results were much better compared to `rpart`, achieving `r confusionMatrix(rf_pred, testing$classe)$overall["Accuracy"]*100`% accuracy on the test set, although it was much slower, and we lost the nicer interpretability of the classification tree.
+
+## Predicting New Data and Conclusion
+
+Finally, we haven chosen the random forester model to predict the 20 new data, since this model achieved `r confusionMatrix(rf_pred, testing$classe)$overall["Accuracy"]*100`% accuracy. Here is the final prediction.
+
+```{r prediction, echo=FALSE, message=FALSE}
+library(randomForest)
+final_pred_rf <- predict(fit_rf, newdata = testing_data)
+final_pred_rf
+```
